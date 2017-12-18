@@ -1,0 +1,18 @@
+<!doctype html>
+<html ng-app="app" class="ng-cloak">
+<head>
+    <link type="text/css" rel="stylesheet" href="vendor.css"></link>
+    <link type="text/css" rel="stylesheet" href="app.css"></link>
+    <script src="vendor.js"></script>
+    <script src="app.js"></script>
+</head>
+<body>
+    <div ng-controller="Foo as foo">
+        <label>Name:</label>
+        <input type="text" ng-model="yourName" placeholder="Enter a name here">
+        <h1>Hello {{yourName}}!</h1>
+        <button class="btn btn-default" ng-click="foo.bar()">test</button>
+        <gg></gg>
+    </div>
+</body>
+</html>
