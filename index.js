@@ -15,7 +15,7 @@ let pulp = (() => {
                 return new f()
             }
         }
-        f.prototype = pulp()
+        f.prototype = this
         Object.entries(defs).forEach(([name, fn]) => {
             f.prototype[name] = function (...args) {
                 this.defered = this.defered.then(() => fn.apply(this, args))
@@ -57,12 +57,18 @@ const wait = (n) => {
 
 const err = () => Promise.reject("!!!")
 
-pulp = pulp().extend({
+let k = pulp().extend({
     foo: () => console.log("hello"),
-    bar: () => wait(1000)
+    bar: () => wait(1000),
+    z: function () { console.log(this) }
 })
 
-pulp().foo().bar().foo()
+let g = k().extend({
+    z: function () { console.log("z", this) }
+})
+
+
+k().zz()
 
 
 //a().foo().tap(wait)(1000).foo()
