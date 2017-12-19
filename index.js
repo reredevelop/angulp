@@ -16,14 +16,12 @@ let pulp = (() => {
             }
         }
         f.prototype = pulp()
-        for (var [name, fn] of Object.entries(defs)) {
-            ((name, fn) => {
-                f.prototype[name] = function (...args) {
-                    this.defered = this.defered.then(() => fn.apply(this, args))
-                    return this
-                }
-            })(name, fn)
-        }
+        Object.entries(defs).forEach(([name, fn]) => {
+            f.prototype[name] = function (...args) {
+                this.defered = this.defered.then(() => fn.apply(this, args))
+                return this
+            }
+        })
         return f
     }
 
