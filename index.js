@@ -1,3 +1,101 @@
+let pulp = (() => {
+
+    function pulp () {
+        if (this instanceof pulp) {
+            this.defered = Promise.resolve()
+            this.items = []
+        } else {
+            return new pulp()
+        }
+    }
+
+    pulp.prototype.extend = function (defs) {
+        function f () {
+            if (!(this instanceof pulp)) {
+                return new f()
+            }
+        }
+        f.prototype = pulp()
+        for (var [name, fn] of Object.entries(defs)) {
+            ((name, fn) => {
+                f.prototype[name] = function (...args) {
+                    this.defered = this.defered.then(() => fn.apply(this, args))
+                    return this
+                }
+            })(name, fn)
+        }
+        return f
+    }
+
+    pulp.prototype.then = function (...args) {
+        this.defered = this.defered.then(() => Promise.all(
+            args.map((fn) => fn.bind(this)())
+        ))
+        return this
+    }
+
+    pulp.prototype.tap = function (fn) {
+        return (...args) => {
+            this.then(() => fn.apply(this, args))
+            return this
+        }
+    }
+
+    pulp.prototype.catch = function (fn) {
+        this.defered = this.defered.catch(fn)
+        return this
+    }
+
+    return pulp
+})()
+
+const wait = (n) => {
+    return new Promise((res, rej) => {
+        setTimeout(() => {
+            res()
+        }, n)
+    })
+}
+
+const err = () => Promise.reject("!!!")
+
+pulp = pulp().extend({
+    foo: () => console.log("hello"),
+    bar: () => wait(1000)
+})
+
+pulp().foo().bar().foo()
+
+
+//a().foo().tap(wait)(1000).foo()
+
+/*
+const a = () =>
+    pulp()
+        .tap(console.log)("start a")
+        .tap(wait)(1000)
+        .tap(console.log)("end a")
+
+const b = () =>
+    pulp()
+        .tap(console.log)("start b")
+        .tap(wait)(1000)
+        .tap(console.log)("end b")
+*/
+
+/*pulp()
+    .tap(console.log)("ok")
+    .tap(wait)("x", 1000)
+    .tap(wait)("y", 1000)
+    .tap(console.log)("lol")*/
+
+//pulp().then(wait("foo", 500), wait("hello", 200)).then(wait("coucou", 1), wait("bar", 500))
+
+//a().then(b, b, b).then(a)
+
+//q.then(() => console.log("1")).then(() => console.log("2")).then(wait(500)).then(() => console.log("3"))
+
+/*
 const fs = require("fs")
 const glob = require("glob")
 const path = require("path")
@@ -92,28 +190,104 @@ const pulp = {
         })
     },
 }
+*/
 
-const rot = (s) => s.replace(/[a-zA-Z]/g,function(c){return String.fromCharCode((c<="Z"?90:122)>=(c=c.charCodeAt(0)+13)?c:c-26);})
-const slice = (i, j) => (s) => s.slice(i, j)
+function gg () {
+    if (this instanceof gg) {
+        this.task = Promise.resolve();
+        this.files = []
+    } else {
+        return new gg()
+    }
+}
 
-const wait = (n) => {
-    return new Promise((resolve) => {
-        setTimeout(resolve, n)
+gg.fn = gg.prototype
+
+function src (pattern) {
+    return new Promise((resolve, reject) => {
+        glob(pattern, (err, matches) => {
+            if (err) {
+                reject(err)
+            } else {
+                resolve(matches.map((path) => ({
+                    path,
+                    buffer: null
+                })))
+            }
+        })
     })
 }
 
-pulp.src("*.json")
-.then(pulp.concat("foo.js"))
-.then(pulp.pipe((x) => {
-    console.log(x.path, x.buffer.toString().replace(/\n|\s/g, ""))
-}))
+/*
+gg.fn.src = function (s) {
+    this.task = this.task.then(() => {
+        return src(s).then((f) => this.files = this.files.concat(f))
+    })
+    return this
+}
+*/
+
+gg.fn.pipe = function (f) {
+    this.task = this.task.then(() => {
+        return pulp.pipe(f)(this.files).then((res) => {
+            this.files = res
+        })
+    })
+    return this
+}
+
+gg.fn.then = function (f) {
+    this.task = this.task.then(f.bind(this))
+    return this
+}
+
+gg.fn.extend = function (o) {
+    const g = new gg()
+    for (var [key, val] of Object.entries(o)) {
+        g[key] = function (...args) {
+            this.task = this.task.then(() => {
+                args = [this].concat(args)
+                val.apply(this, args)
+            })
+            return this
+        }
+    }
+    return g
+}
+
+const ok = gg()
+
+g = ok.extend({
+    src: function () {
+        this.files = this.files.concat([
+            { path: "index.js" }
+        ])
+    }
+})
+
+k = g.extend({
+    src: function () {
+        this.files = this.files.concat([
+            { path: "gulpfile.js" }
+        ])
+        this.meta = "ok"
+    }
+})
 
 /*
-.then(pulp.transform(rot))
-.then(pulp.transform(slice(0, 25)))
-.then(pulp.rename(x => x.replace(/js$/, "json")))
-.then(pulp.pipe((x) => {
-    console.log(x.path, x.buffer.toString().replace(/\n/g, ""))
-}))
-.then(pulp.dest("out/"))
+k.src().then(function () {
+    console.log(this)
+})
 */
+
+/*
+const js = () => $.src("*.js").pipe(uglify()).concat("app.min.js").dest("dist")
+const html = () => $.src("*.html").concat("out.html").dest("dist")
+const build = () => $.all(js, html)
+
+build().then(() => console.log("done"))
+*/
+
+
+
+
