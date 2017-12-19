@@ -1,122 +1,119 @@
-const glob = require("glob")
 const fs = require("fs")
+const glob = require("glob")
 const path = require("path")
+const mkdirp = require("mkdirp")
 
-const src = (s) => {
-    return new Promise((success, fail) => {
-        glob(s, (err, files) => {
-            if (err) {
-                fail(err)
-            } else {
-                success(files.map((f) => ({
-                    src: f,
-                    data: null
-                })))
-            }
-        })
-    })
-}
+const pulp = {
 
-const read = (source) => {
-    const defered = source.map((i) => {
+    src: (pattern) => {
         return new Promise((resolve, reject) => {
-            if (i.data) return resolve(i)
-            fs.readFile(i.src, (err, data) => {
+            glob(pattern, (err, matches) => {
                 if (err) {
                     reject(err)
                 } else {
-                    i.data = data
-                    resolve(i)
+                    resolve(matches.map((path) => ({
+                        path,
+                        buffer: null
+                    })))
                 }
             })
         })
-    })
-    return Promise.all(defered)
-}
+    },
 
-const concat = (dest) => {
-    return (source) => {
-        return read(source).then((source) => {
-            return [{
-                src: dest,
-                data: Buffer.concat(source.map(x => x.data))
-            }]
-        })
-    }
-}
-
-const out = (dest) => {
-    return (source) => {
-        const defered = source.map((i) => {
+    dest: (base) => {
+        return pulp.pipe((file) => {
             return new Promise((resolve, reject) => {
-                fs.writeFile(path.join(dest, i.src), i.data, (err) => {
+                const fpath = path.join(base, file.path)
+                mkdirp(path.dirname(fpath), (err) => {
                     if (err) {
                         reject(err)
                     } else {
-                        resolve(i)
+                        fs.writeFile(fpath, file.buffer, (err) => {
+                            if (err) {
+                                reject(err)
+                            } else {
+                                resolve(file)
+                            }
+                        })
                     }
                 })
             })
         })
-        return Promise.all(defered)
-    }
-}
+    },
 
-const add = (more) => {
-    return (source) => {
-        return more.then((result) => {
-            return source.concat(result)
+    join: (...args) => {
+        return Promise.all(args).then((x) => {
+            return [].concat.apply([], x)
         })
-    }
-}
+    },
 
-const replace = (regex, str) => {
-    return (source) => {
-        return Promise.resolve(source.map((i) => {
-            i.src = i.src.replace(regex, str)
-            return i
-        }))
-    }
-}
+    pipe: (callback) => {
+        return (files) => {
+            return Promise.all(files.map((file) => {
+                if (file.buffer) {
+                    return Promise.resolve(file).then(callback)
+                } else {
+                    return new Promise((resolve, reject) => {
+                        fs.readFile(file.path, (err, data) => {
+                            if (err) {
+                                reject(err)
+                            } else {
+                                file.buffer = data
+                                resolve(file)
+                            }
+                        })
+                    }).then(callback)
+                }
+            })).catch((err) => console.log("ERROR", err))
+            .then(() => files)
+        }
+    },
 
-const fn = (cb) => {
-    return (source) => {
-        return Promise.resolve(source.map((i) => {
-            i.src = cb(i.src)
-            return i
-        }))
-    }
-}
+    concat: (path) => {
+        return (files) => {
+            return pulp.pipe()(files).then((files) => {
+                return [{
+                    path,
+                    buffer: Buffer.concat(files.map((f) => f.buffer))
+                }]
+            })
+        }
+    },
 
-const foo = (cb) => {
-    return (source) => {
-        return read(source).then((source) => {
-            return Promise.resolve(source.map((i) => {
-                i.data = cb(i)
-                return i
-            }))
+    transform: (callback) => {
+        return pulp.pipe((file) => {
+            file.buffer = new Buffer(callback(file.buffer.toString()))
         })
-    }
+    },
+
+    rename: (callback) => {
+        return pulp.pipe((file) => {
+            file.path = callback(file.path)
+        })
+    },
 }
 
-const uglify = foo((i) => {
-    var uglify = require("uglify-js")
-    return new Buffer(uglify.minify(i.data.toString()).code)
-})
+const rot = (s) => s.replace(/[a-zA-Z]/g,function(c){return String.fromCharCode((c<="Z"?90:122)>=(c=c.charCodeAt(0)+13)?c:c-26);})
+const slice = (i, j) => (s) => s.slice(i, j)
 
-const log = foo((i) => {
-    console.log(i.src, i.data.toString())
-    return i
-})
+const wait = (n) => {
+    return new Promise((resolve) => {
+        setTimeout(resolve, n)
+    })
+}
 
-var bar = () => src("./a.js").then(uglify).then(log)
+pulp.src("*.json")
+.then(pulp.concat("foo.js"))
+.then(pulp.pipe((x) => {
+    console.log(x.path, x.buffer.toString().replace(/\n|\s/g, ""))
+}))
 
-bar().then(bar).then(bar)
-
-
-
-
-
-
-
-
+/*
+.then(pulp.transform(rot))
+.then(pulp.transform(slice(0, 25)))
+.then(pulp.rename(x => x.replace(/js$/, "json")))
+.then(pulp.pipe((x) => {
+    console.log(x.path, x.buffer.toString().replace(/\n/g, ""))
+}))
+.then(pulp.dest("out/"))
+*/
